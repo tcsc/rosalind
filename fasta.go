@@ -4,16 +4,25 @@ import (
 	"bufio"
 	"bytes"
 	"io"
+	"os"
 	"strings"
 )
 
 type Codon struct {
 	Name     string
 	Sequence string
+	Error    error
 }
 
-func ReadFile(filename string) {
-
+func ReadFile(filename string) <-chan Codon {
+	file, err := os.Open(filename)
+	if err != nil {
+		ch := make(chan Codon, 1)
+		ch <- Codon{"", "", err}
+		close(ch)
+		return ch
+	}
+	return Read(file)
 }
 
 func Read(reader io.Reader) <-chan Codon {
@@ -34,7 +43,7 @@ func Read(reader io.Reader) <-chan Codon {
 		s := bufio.NewScanner(reader)
 		for s.Scan() {
 			if s.Err() != nil {
-				// signal error
+				ch <- Codon{"", "", s.Err()}
 				return
 			}
 
@@ -45,7 +54,7 @@ func Read(reader io.Reader) <-chan Codon {
 
 			if line[0] == '>' {
 				if seq.Len() > 0 {
-					ch <- Codon{name, seq.String()}
+					ch <- Codon{name, seq.String(), nil}
 				}
 				name = line[1:]
 				seq.Reset()
@@ -55,7 +64,7 @@ func Read(reader io.Reader) <-chan Codon {
 		}
 
 		if seq.Len() > 0 {
-			ch <- Codon{name, seq.String()}
+			ch <- Codon{name, seq.String(), nil}
 		}
 	}()
 

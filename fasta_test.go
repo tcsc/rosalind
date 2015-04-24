@@ -7,6 +7,20 @@ import (
 	"time"
 )
 
+func Test_ReadNonExistantFileProducessError(t *testing.T) {
+	var count = 0
+	for codon := range ReadFile("/no/such/file") {
+		count++
+		if codon.Error == nil {
+			t.Fatal("Expected an error")
+		}
+	}
+
+	if count != 1 {
+		t.Fatalf("Expeced to hit loop body only once, gog %d", count)
+	}
+}
+
 func Test_ReadingAnEmptyStringReturnsNoRecords(t *testing.T) {
 	count := 0
 	buf := bytes.NewBufferString("")
@@ -64,7 +78,7 @@ func Test_CommentLinesAreIgnored(t *testing.T) {
 		var expected Codon
 		switch count {
 		case 0:
-			expected = Codon{"SomeName", "GATTACAGATAAAATTTTAACACACCA"}
+			expected = Codon{"SomeName", "GATTACAGATAAAATTTTAACACACCA", nil}
 			break
 
 		default:
@@ -85,11 +99,11 @@ func Test_MultipleRecordsAreReadInOrder(t *testing.T) {
 		var expected Codon
 		switch count {
 		case 0:
-			expected = Codon{"SomeName", "GATTACA"}
+			expected = Codon{"SomeName", "GATTACA", nil}
 			break
 
 		case 1:
-			expected = Codon{"AnotherName", "GATAAAATTTTAACACACCA"}
+			expected = Codon{"AnotherName", "GATAAAATTTTAACACACCA", nil}
 			break
 
 		default:
