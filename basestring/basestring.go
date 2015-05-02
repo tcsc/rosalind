@@ -42,6 +42,7 @@ func toBaseChar(c rune) (byte, error) {
 	return 0, InvalidBaseError(c)
 }
 
+/// FromString creates new string of bases from an arbitrary text string.
 func FromString(s string) (baseString, error) {
 	cb := (len(s) + 1) / 2
 
@@ -60,10 +61,12 @@ func FromString(s string) (baseString, error) {
 	return str, nil
 }
 
+/// Returns the length of the string in bases
 func (self *baseString) Length() int {
 	return self.length
 }
 
+/// sets a base value in the string at the given index
 func (self *baseString) setBase(i int, b rune) error {
 	base, err := toBaseChar(b)
 	if err != nil {

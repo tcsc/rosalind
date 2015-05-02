@@ -117,19 +117,31 @@ func New(s string) SuffixTree {
 	return tree
 }
 
+/// activePointState defines a struct for managing the current insertion point
 type activePointState struct {
 	node   *node
 	edge   rune
 	length int
 }
 
+/// edgeTarget fetches a pointer to the currently active child node, i.e. the
+/// child of the currently active node pointed to by the active edge. Returns
+/// nil if no edge is active, or no such child exists
 func (self *activePointState) edgeTarget() *node {
 	if result, ok := self.node.children[self.edge]; ok {
 		return result
 	}
+
+	if self.edge != '\x00' {
+		panic("We're missing a child node!")
+	}
+
 	return nil
 }
 
+/// slide moves the active point along a link to the next child node, if it is
+/// appropriate to do so. Returns true if the active point has benn modified,
+/// false if it has been left unchanged.
 func (self *activePointState) slide(child *node, text []rune) bool {
 	if child.length != inf && self.length >= child.length {
 		self.length -= child.length
@@ -140,7 +152,7 @@ func (self *activePointState) slide(child *node, text []rune) bool {
 	return false
 }
 
-/// Generates a suffix link between a the nodes if prevNode is not nil.
+/// Generates a suffix link between a the nodes iff prevNode is not nil.
 func link(prev, next *node) *node {
 	if prev != nil {
 		prev.suffix = next

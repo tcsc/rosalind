@@ -5,7 +5,7 @@ import (
 )
 
 func Test_Init(t *testing.T) {
-	//New("abcabxabcd")
+	New("abcabxabcd")
 	New("cdddcdc")
 }
 
@@ -43,5 +43,4 @@ func Test_SplittingNode(t *testing.T) {
 	if newChild.length != inf {
 		t.Errorf("Expected new child to have length (inf), got %d", newChild.length)
 	}
-
 }

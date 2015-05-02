@@ -21,7 +21,7 @@ func Test_CreatingBaseStringWithValidCharsSucceeds(t *testing.T) {
 }
 
 func Test_CreatingBaseStringWithInvalidCharsFails(t *testing.T) {
-	_, err := FromString("GA7TACA")
+	_, err := FromString("NarfZortTroz")
 	if err == nil {
 		t.Fatal("Expected conversion to fail")
 	}
