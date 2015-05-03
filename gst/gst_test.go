@@ -5,8 +5,10 @@ import (
 )
 
 func Test_Init(t *testing.T) {
-	New("abcabxabcd")
-	New("cdddcdc")
+	u := New("日本語abc日本語abda本語befg")
+	u.dumpTree("unicode.dot")
+	//New("abcabxabcd")
+	//New("cdddcdc")
 }
 
 func decode(s string) []rune {
@@ -18,29 +20,23 @@ func decode(s string) []rune {
 }
 
 func Test_SplittingNode(t *testing.T) {
-	text := decode("abcabx")
+	text := "abcabx"
 
 	parent := newNode(-1, nil)
 	n := newNode(0, parent)
 	parent.children['a'] = n
 
-	newParent, nn, newChild := n.split(text, 2, 2)
+	suffixNode := n.split(text, 2, 2)
 
-	if parent.children['a'] != newParent {
-		t.Errorf("Expected new parent to be a child or parent")
+	if n.children['a'] != suffixNode {
+		t.Errorf("Expected new suffix node to be a child of parent")
 	}
 
-	if nn != n {
-		t.Errorf("Expected nn to be the original node")
+	if n.str.length != 2 {
+		t.Errorf("Expected modified parent to have length (2, got %d", n.str.length)
 	}
 
-	_ = newChild
-
-	if newParent.length != 2 {
-		t.Errorf("Expected new parent to have length (2, got %d", newParent.length)
-	}
-
-	if newChild.length != inf {
-		t.Errorf("Expected new child to have length (inf), got %d", newChild.length)
+	if suffixNode.str.length != inf {
+		t.Errorf("Expected new suffix to have length (inf), got %d", suffixNode.str.length)
 	}
 }
