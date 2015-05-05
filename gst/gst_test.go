@@ -2,13 +2,32 @@ package gst
 
 import (
 	"testing"
+	"unicode/utf8"
 )
 
 func Test_Init(t *testing.T) {
-	u := New("日本語abc日本語abda本語befg")
-	u.dumpTree("unicode.dot")
-	//New("abcabxabcd")
-	//New("cdddcdc")
+	u := New("日本語abc日本語abda本語befgda本語beft")
+	u.mustBeValid()
+
+	ab := New("abcabxabcd")
+	ab.mustBeValid()
+
+	cd := New("cdddcdc")
+	cd.mustBeValid()
+}
+
+func Test_TreeContainsAllSubstrings(t *testing.T) {
+	s := "日本語abc日本語abda本語befgda本語beft"
+	tree := New(s)
+
+	for len(s) > 0 {
+		_, size := utf8.DecodeRuneInString(s)
+		if !tree.Contains(s) {
+			t.Errorf("tree should contain %s", s)
+		}
+
+		s = s[size:]
+	}
 }
 
 func decode(s string) []rune {
@@ -22,8 +41,8 @@ func decode(s string) []rune {
 func Test_SplittingNode(t *testing.T) {
 	text := "abcabx"
 
-	parent := newNode(-1, nil)
-	n := newNode(0, parent)
+	parent := newNode(-1)
+	n := newNode(0)
 	parent.children['a'] = n
 
 	suffixNode := n.split(text, 2, 2)

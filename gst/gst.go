@@ -21,7 +21,6 @@ type substring struct {
 /// node represents a chunk of text inside the suffix tree. It doesn't store
 /// the text itself, it only stores pointers to the text in an string.
 type node struct {
-	parent   *node
 	suffix   *node
 	str      substring
 	children map[rune]*node
@@ -29,9 +28,8 @@ type node struct {
 
 /// newNode creates and initialises a node in its defauts state: starting at a
 /// given offset and extending for the remainder or the internal text
-func newNode(start int, parent *node) *node {
+func newNode(start int) *node {
 	return &node{
-		parent:   parent,
 		str:      substring{index: 0, offset: start, length: inf},
 		suffix:   nil,
 		children: make(map[rune]*node),
@@ -46,7 +44,6 @@ func (self *node) split(text string, i, length int) *node {
 	}
 
 	newChild := &node{
-		parent: self,
 		str: substring{
 			index:  0,
 			offset: self.str.offset + length,
@@ -55,60 +52,20 @@ func (self *node) split(text string, i, length int) *node {
 		children: self.children,
 	}
 
-	for _, gc := range newChild.children {
-		gc.parent = newChild
-	}
-
 	self.str.length = length
-
 	key := decodeRune(text, newChild.str.offset)
-	if _, ok := self.children[key]; ok {
-		panic(fmt.Sprintf("Node %s already has child at %c",
-			self.label(text),
-			key))
-	}
 	self.children = map[rune]*node{key: newChild}
 
 	return newChild
-
-	// oldParent := self.parent
-	// newLeaf := newNode(i, nil)
-
-	// newParent := &node{
-	// 	parent: oldParent,
-	// 	str:    substring{index: 0, offset: self.str.offset, length: length},
-	// 	suffix: self.suffix,
-	// 	children: map[rune]*node{
-	// 		decodeRune(text, self.str.offset+length): self,
-	// 		decodeRune(text, i):                      newLeaf},
-	// }
-
-	// newLeaf.parent = newParent
-
-	// oldParent.children[decodeRune(text, self.str.offset)] = newParent
-	// self.parent = newParent
-	// self.str.offset += length
-	// if self.str.length != inf {
-	// 	self.str.length -= length
-	// }
-	// self.suffix = nil
-	//
-	// return newParent, self, newLeaf
-}
-
-/// A key/value pair use when iterating over the children of a node
-type child struct {
-	index rune
-	n     *node
 }
 
 /// childNodes returns a slice of key/value pairs, representing the
 /// child suffixes of the node, and the indices used to address them.
-func (self *node) childNodes() []child {
-	result := make([]child, len(self.children))
+func (self *node) childNodes() []*node {
+	result := make([]*node, len(self.children))
 	i := 0
-	for k, v := range self.children {
-		result[i] = child{index: k, n: v}
+	for _, v := range self.children {
+		result[i] = v
 		i++
 	}
 	return result
@@ -121,7 +78,7 @@ func (self *node) id() string {
 
 /// label() generates a label for the node, representing its text value
 func (self *node) label(text string) string {
-	if self.parent == nil {
+	if self.str.offset == -1 {
 		return "root"
 	}
 
@@ -151,7 +108,7 @@ type SuffixTree struct {
 /// Creates a new suffix treen and initialises it from the supplied string.
 func New(s string) SuffixTree {
 	tree := SuffixTree{
-		root:   newNode(-1, nil),
+		root:   newNode(-1),
 		corpus: []string{s},
 	}
 	tree.Insert(s)
@@ -183,11 +140,12 @@ func (self *activePointState) edgeTarget() *node {
 /// slide moves the active point along a link to the next child node, if it is
 /// appropriate to do so. Returns true if the active point has benn modified,
 /// false if it has been left unchanged.
-func (self *activePointState) slide(child *node, text string) bool {
+func (self *activePointState) slide(child *node, index int, text string) bool {
 	if child.str.length != inf && self.length >= child.str.length {
 		self.length -= child.str.length
-		self.edge = decodeRune(text, child.str.offset)
+		self.edge = decodeRune(text, index-self.length)
 		self.node = child
+		fmt.Printf("Sliding to %s[%c]\n", child.label(text), self.edge)
 		return true
 	}
 	return false
@@ -216,6 +174,46 @@ func (self *node) format(text string) string {
 	}
 	result += "}"
 	return result
+}
+
+/// Asserts the invariants of a completed tree
+func (self *SuffixTree) mustBeValid() {
+	queue := []*node{self.root}
+	for len(queue) > 0 {
+		n := queue[0]
+		queue = queue[1:]
+		for k, v := range n.children {
+			// assert that each node's key is the leading character of the
+			// string
+			if k != self.nodeChar(v, 0) {
+				panic(fmt.Sprintf("Expected index %c for node %s. Got %c",
+					self.nodeChar(v, 0),
+					self.nodeString(v),
+					k))
+			}
+			queue = append(queue, v.childNodes()...)
+		}
+	}
+}
+
+/// nodeChar fetches the i'th character in the substring represented by the
+/// node. Asking for a character outside the substring range will result in
+/// undefined behaviour.
+func (self *SuffixTree) nodeChar(n *node, i int) rune {
+	s := self.corpus[n.str.index]
+	ch, _ := utf8.DecodeRuneInString(s[n.str.offset+i:])
+	return ch
+}
+
+/// nodeChar fetches the substring represented by the node. Asking for a
+/// character outside the substring range will result in undefined behaviour.
+func (self *SuffixTree) nodeString(n *node) string {
+	s := self.corpus[n.str.index]
+	if n.str.length == inf {
+		return s[n.str.offset:]
+	} else {
+		return s[n.str.offset : n.str.offset+n.str.length]
+	}
 }
 
 /// Insert inserts a new string into the suffix tree.
@@ -252,14 +250,14 @@ func (self *SuffixTree) Insert(s string) { //, index int) {
 			activeChild, ok := active.node.children[active.edge]
 			if !ok {
 				fmt.Printf("New node for %c\n", c)
-				newChild := newNode(i, active.node)
+				newChild := newNode(i)
 				active.node.children[active.edge] = newChild
 
 				fmt.Printf("Active Node is now %s\n", active.node.format(prefix))
 				prevNode = newChild //link(prevNode, newChild, prefix)
 			} else {
 				fmt.Printf("Active edge length: %d\n", activeChild.str.length)
-				if active.slide(activeChild, s) {
+				if active.slide(activeChild, i, s) {
 					fmt.Printf("Sliding\n")
 					continue
 				}
@@ -274,13 +272,13 @@ func (self *SuffixTree) Insert(s string) { //, index int) {
 
 				if decodeRune(s, activeChild.str.offset+active.length) == c {
 					active.length += charlen
-					prevNode = link(prevNode, active.node, prefix)
+					//prevNode = link(prevNode, active.node, prefix)
 					break
 				} else {
 					fmt.Printf("Splitting %s\n", activeChild.format(prefix))
 					grandChild := activeChild.split(s, i, active.length)
 
-					newChild := newNode(i, activeChild)
+					newChild := newNode(i)
 					activeChild.children[c] = newChild
 
 					fmt.Printf(
@@ -289,7 +287,7 @@ func (self *SuffixTree) Insert(s string) { //, index int) {
 						grandChild.format(prefix),
 						newChild.format(prefix))
 
-					prevNode = link(prevNode, grandChild, prefix)
+					prevNode = link(prevNode, newChild, prefix)
 				}
 			}
 			remainder--
@@ -299,7 +297,7 @@ func (self *SuffixTree) Insert(s string) { //, index int) {
 				fmt.Printf("Old leader: %c\n", x)
 
 				active.length -= n
-				active.edge = decodeRune(s, i-active.length)
+				active.edge = decodeRune(s, (i - active.length))
 				fmt.Printf("new leader: %c\n", active.edge)
 			} else {
 				if active.node.suffix != nil {
@@ -315,8 +313,29 @@ func (self *SuffixTree) Insert(s string) { //, index int) {
 		i += charlen
 		text = text[charlen:]
 	}
+}
 
-	fmt.Println("<<<<<<<<")
+/// Contains checks to see if the tree contains a given substring
+func (self *SuffixTree) Contains(s string) bool {
+	node := self.root
+	nodeStr := ""
+	for _, ch := range s {
+		if len(nodeStr) == 0 {
+			if n, ok := node.children[ch]; !ok {
+				return false
+			} else {
+				node = n
+				nodeStr = self.nodeString(node)
+			}
+		}
+		otherChar, size := utf8.DecodeRuneInString(nodeStr)
+		if ch != otherChar {
+			return false
+		}
+
+		nodeStr = nodeStr[size:]
+	}
+	return true
 }
 
 /// dumpTree writes the tree out to a dot-formatted file  for diagnstic
@@ -333,18 +352,19 @@ func (self *SuffixTree) dumpTree(filename string) {
 
 	file.WriteString(fmt.Sprintf("\"%p\" [label=\"root\"]\n", self.root))
 
-	queue := self.root.childNodes()
+	queue := []*node{self.root}
 	for len(queue) > 0 {
-		n := queue[0].n
-		x := queue[0].index
-		if x == '\x00' {
-			x = '?'
-		}
+		n := queue[0]
 		queue = queue[1:]
 
 		label := n.label(self.corpus[n.str.index])
 		file.WriteString(fmt.Sprintf("\"%p\" [label=\"%s\"]\n", n, label))
-		file.WriteString(fmt.Sprintf("\"%p\" -> \"%p\" [label=\"%c\"]\n", n.parent, n, x))
+		for k, v := range n.children {
+			if k == '\x00' {
+				k = '?'
+			}
+			file.WriteString(fmt.Sprintf("\"%p\" -> \"%p\" [label=\"%c\"]\n", n, v, k))
+		}
 
 		if n.suffix != nil {
 			file.WriteString(fmt.Sprintf("\"%p\" -> \"%p\" [style=\"dotted\"]\n", n, n.suffix))
