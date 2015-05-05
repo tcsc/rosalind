@@ -39,19 +39,11 @@ func Test_TreeContainsAllSubstrings(t *testing.T) {
 	}
 }
 
-func decode(s string) []rune {
-	result := make([]rune, 0, len(s))
-	for _, ch := range s {
-		result = append(result, ch)
-	}
-	return result
-}
-
 func Test_SplittingNode(t *testing.T) {
 	text := "abcabx"
 
-	parent := newNode(-1)
-	n := newNode(0)
+	parent := newNode(0, -1)
+	n := newNode(0, 0)
 	parent.children['a'] = n
 
 	suffixNode := n.split(text, 2)
@@ -80,16 +72,16 @@ func Test_SplittingNode(t *testing.T) {
 }
 
 func Test_LinkReturnsNextNode(t *testing.T) {
-	a := newNode(0)
-	b := newNode(42)
+	a := newNode(0, 0)
+	b := newNode(0, 42)
 	if link(a, b) != b {
 		t.Error("Expected link() to return next, but it didn't")
 	}
 }
 
 func Test_LinkCreatePrevToNext(t *testing.T) {
-	a := newNode(0)
-	b := newNode(42)
+	a := newNode(0, 0)
+	b := newNode(0, 42)
 	link(a, b)
 	if a.suffix != b {
 		t.Error("Expected suffix link to be node b, but it wasn't")
@@ -97,6 +89,6 @@ func Test_LinkCreatePrevToNext(t *testing.T) {
 }
 
 func Test_LinkCanTakeNilPrevPtr(t *testing.T) {
-	a := newNode(0)
+	a := newNode(0, 0)
 	link(nil, a) // assert this doesn't actually crash
 }

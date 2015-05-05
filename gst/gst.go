@@ -28,9 +28,9 @@ type node struct {
 
 /// newNode creates and initialises a node in its defauts state: starting at a
 /// given offset and extending for the remainder or the internal text
-func newNode(start int) *node {
+func newNode(stringId, start int) *node {
 	return &node{
-		str:      substring{index: 0, offset: start, length: inf},
+		str:      substring{index: stringId, offset: start, length: inf},
 		suffix:   nil,
 		children: make(map[rune]*node),
 	}
@@ -76,29 +76,6 @@ func (self *node) id() string {
 	return fmt.Sprintf("%p", self)
 }
 
-/// label() generates a label for the node, representing its text value
-// func (self *node) label(text string) string {
-// 	if self.str.offset == -1 {
-// 		return "root"
-// 	}
-
-// 	last := len(text)
-// 	if self.str.length != -1 {
-// 		last = self.str.offset + self.str.length
-// 	}
-// 	if self.str.offset >= len(text) {
-// 		panic("oob")
-// 	}
-// 	return string(text[self.str.offset:last])
-// }
-
-func (self *node) isShorterThan(n int) bool {
-	if self.str.length != inf {
-		return self.str.offset+self.str.length <= n
-	}
-	return false
-}
-
 ///
 type SuffixTree struct {
 	root   *node
@@ -106,12 +83,15 @@ type SuffixTree struct {
 }
 
 /// Creates a new suffix treen and initialises it from the supplied string.
-func New(s string) SuffixTree {
+func New(strings ...string) SuffixTree {
 	tree := SuffixTree{
-		root:   newNode(-1),
-		corpus: []string{s},
+		root:   newNode(-1, -1),
+		corpus: make([]string, 0, 1),
 	}
-	tree.Insert(s)
+
+	for _, s := range strings {
+		tree.Insert(s)
+	}
 	return tree
 }
 
@@ -158,6 +138,7 @@ func link(prev, next *node) *node {
 	return next
 }
 
+/// Decodes a rune starting at a given offset inside a string
 func decodeRune(text string, offset int) rune {
 	r, _ := utf8.DecodeRuneInString(text[offset:])
 	return r
@@ -204,12 +185,21 @@ func (self *SuffixTree) nodeString(n *node) string {
 }
 
 /// Insert inserts a new string into the suffix tree.
+func (self *SuffixTree) Insert(s string) {
+	id := len(self.corpus)
+	taggedText := fmt.Sprintf("%s\x00%08x", s, id)
+	self.corpus = append(self.corpus, taggedText)
+	self.index(id)
+}
+
+/// Indexes a string in the corpus
 /// Based on code from http://pastie.org/5925812#72-106
-func (self *SuffixTree) Insert(s string) { //, index int) {
+func (self *SuffixTree) index(index int) { //, index int) {
 	active := activePointState{self.root, '\x00', 0}
 	remainder := 0
 
 	i := 0
+	s := self.corpus[index]
 	text := s
 	for len(text) > 0 {
 		c, charlen := utf8.DecodeRuneInString(text)
@@ -223,7 +213,7 @@ func (self *SuffixTree) Insert(s string) { //, index int) {
 
 			activeChild, ok := active.node.children[active.edge]
 			if !ok {
-				newChild := newNode(i)
+				newChild := newNode(index, i)
 				active.node.children[active.edge] = newChild
 				prevNode = link(prevNode, active.node)
 			} else {
@@ -237,7 +227,7 @@ func (self *SuffixTree) Insert(s string) { //, index int) {
 					break
 				} else {
 					activeChild.split(s, active.length)
-					newChild := newNode(i)
+					newChild := newNode(index, i)
 					activeChild.children[c] = newChild
 					prevNode = link(prevNode, activeChild)
 				}
