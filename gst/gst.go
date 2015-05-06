@@ -3,6 +3,7 @@ package gst
 import (
 	"fmt"
 	"os"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -19,7 +20,7 @@ type substring struct {
 }
 
 /// node represents a chunk of text inside the suffix tree. It doesn't store
-/// the text itself, it only stores pointers to the text in an string.
+/// the text itself, it only stores pointers to the text in an external string.
 type node struct {
 	suffix   *node
 	str      substring
@@ -45,7 +46,7 @@ func (self *node) split(text string, length int) *node {
 
 	newChild := &node{
 		str: substring{
-			index:  0,
+			index:  self.str.index,
 			offset: self.str.offset + length,
 			length: childLength},
 		suffix:   nil,
@@ -53,7 +54,7 @@ func (self *node) split(text string, length int) *node {
 	}
 
 	self.str.length = length
-	key := decodeRune(text, newChild.str.offset)
+	key := decodeRune(text, length)
 	self.children = map[rune]*node{key: newChild}
 
 	return newChild
@@ -192,6 +193,10 @@ func (self *SuffixTree) Insert(s string) {
 	self.index(id)
 }
 
+func (self *SuffixTree) split(n *node, i int) *node {
+	return n.split(self.nodeString(n), i)
+}
+
 /// Indexes a string in the corpus
 /// Based on code from http://pastie.org/5925812#72-106
 func (self *SuffixTree) index(index int) { //, index int) {
@@ -199,8 +204,8 @@ func (self *SuffixTree) index(index int) { //, index int) {
 	remainder := 0
 
 	i := 0
-	s := self.corpus[index]
-	text := s
+	text := self.corpus[index]
+	str := text
 	for len(text) > 0 {
 		c, charlen := utf8.DecodeRuneInString(text)
 		remainder++
@@ -217,27 +222,34 @@ func (self *SuffixTree) index(index int) { //, index int) {
 				active.node.children[active.edge] = newChild
 				prevNode = link(prevNode, active.node)
 			} else {
-				if active.slide(activeChild, i, s) {
+				if active.slide(activeChild, i, str) {
 					continue
 				}
 
-				if decodeRune(s, activeChild.str.offset+active.length) == c {
+				if self.nodeChar(activeChild, active.length) == c {
 					active.length += charlen
 					prevNode = link(prevNode, active.node)
 					break
 				} else {
-					activeChild.split(s, active.length)
+					// fmt.Printf("\nSplitting: \"%s\"\n", self.nodeString(activeChild))
+
+					self.split(activeChild, active.length)
 					newChild := newNode(index, i)
 					activeChild.children[c] = newChild
+
+					// fmt.Printf("prefix:    \"%s\"\n", self.nodeString(activeChild))
+					// fmt.Printf("suffix:    \"%s\"\n", self.nodeString(gch))
+					// fmt.Printf("new child: \"%s\"\n", self.nodeString(newChild))
+
 					prevNode = link(prevNode, activeChild)
 				}
 			}
 			remainder--
 
 			if active.node == self.root && active.length > 0 {
-				_, n := utf8.DecodeRuneInString(s[i-active.length:])
+				_, n := utf8.DecodeRuneInString(str[i-active.length:])
 				active.length -= n
-				active.edge = decodeRune(s, (i - active.length))
+				active.edge = decodeRune(str, (i - active.length))
 			} else {
 				if active.node.suffix != nil {
 					active.node = active.node.suffix
@@ -287,20 +299,24 @@ func (self *SuffixTree) dumpTree(filename string) {
 	file.WriteString("digraph G {\n")
 	defer file.WriteString("}")
 
-	file.WriteString(fmt.Sprintf("\"%p\" [label=\"root\"]\n", self.root))
-
 	queue := []*node{self.root}
 	for len(queue) > 0 {
 		n := queue[0]
 		queue = queue[1:]
 
-		label := self.nodeString(n)
-		file.WriteString(fmt.Sprintf("\"%p\" [label=\"%s\"]\n", n, label))
+		label := ""
+		if n.str.index < 0 {
+			label = "root"
+		} else {
+			label = strings.Replace(self.nodeString(n), "\x00", "(null)", -1)
+		}
+
+		file.WriteString(fmt.Sprintf("\"%p\" [label=\"'%s'\"]\n", n, label))
 		for k, v := range n.children {
 			if k == '\x00' {
 				k = '?'
 			}
-			file.WriteString(fmt.Sprintf("\"%p\" -> \"%p\" [label=\"%c\"]\n", n, v, k))
+			file.WriteString(fmt.Sprintf("\"%p\" -> \"%p\" [label=\"'%c'\"]\n", n, v, k))
 		}
 
 		if n.suffix != nil {

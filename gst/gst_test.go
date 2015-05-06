@@ -92,3 +92,16 @@ func Test_LinkCanTakeNilPrevPtr(t *testing.T) {
 	a := newNode(0, 0)
 	link(nil, a) // assert this doesn't actually crash
 }
+
+func Test_GeneralisedTree(t *testing.T) {
+	strings := []string{
+		"The answer ... is fourty-two!",
+		"Fourty-two?",
+		"Yes! Fourty-two!",
+		"Fourty Two!? We're going to get lynched, aren't we?",
+	}
+
+	tree := New(strings...)
+	tree.dumpTree("h2g2.dot")
+	tree.mustBeValid()
+}
