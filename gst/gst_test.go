@@ -93,7 +93,7 @@ func Test_LinkCanTakeNilPrevPtr(t *testing.T) {
 	link(nil, a) // assert this doesn't actually crash
 }
 
-func Test_GeneralisedTree(t *testing.T) {
+func Test_GeneralisedTreeIsValid(t *testing.T) {
 	strings := []string{
 		"The answer ... is fourty-two!",
 		"Fourty-two?",
@@ -104,4 +104,27 @@ func Test_GeneralisedTree(t *testing.T) {
 	tree := New(strings...)
 	tree.dumpTree("h2g2.dot")
 	tree.mustBeValid()
+}
+
+func Test_FindAllActuallyFindsAll(t *testing.T) {
+	strings := []string{
+		"The answer ... is fourty-two!",
+		"Fourty-two?",
+		"Yes! Fourty-two!",
+		"Fourty two!? We're going to get lynched, aren't we?",
+	}
+
+	tree := New(strings...)
+	points := tree.FindAll("our")
+
+	if len(points) != 4 {
+		t.Errorf("Expected %d points, got %d", 4, len(points))
+	}
+
+	for _, pt := range points {
+		text := tree.Str(pt.Id)[pt.Offset : pt.Offset+3]
+		if text != "our" {
+			t.Errorf("Expected to find \"our\", got \"%s\"\n", text)
+		}
+	}
 }

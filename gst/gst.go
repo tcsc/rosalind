@@ -77,6 +77,10 @@ func (self *node) id() string {
 	return fmt.Sprintf("%p", self)
 }
 
+func (self *node) isLeaf() bool {
+	return len(self.children) == 0
+}
+
 ///
 type SuffixTree struct {
 	root   *node
@@ -212,25 +216,38 @@ func (self *SuffixTree) index(index int) { //, index int) {
 		var prevNode *node = nil
 
 		for remainder > 0 {
+			// if we're not already tracking a branch of the active node...
 			if active.length == 0 {
 				active.edge = c
 			}
 
+			// look up the active branch.
 			activeChild, ok := active.node.children[active.edge]
 			if !ok {
+				// branch does not exist - better start it!
 				newChild := newNode(index, i)
 				active.node.children[active.edge] = newChild
 				prevNode = link(prevNode, active.node)
 			} else {
+				// if we have reached the end of the active branc, it's time to
+				// move down the tree to the branch's target node
 				if active.slide(activeChild, i, str) {
+					// ... and try the current suffix again
 					continue
 				}
 
+				// look at the character at the insertion point, does it match?
 				if self.nodeChar(activeChild, active.length) == c {
+					// yep - we can just keep tracking this branch as it already
+					// contains the current suffix.
 					active.length += charlen
 					prevNode = link(prevNode, active.node)
 					break
 				} else {
+					// nope - we need to split the active node at the insertion
+					// point so we can insert a new node that encodes our active
+					// suffix
+
 					// fmt.Printf("\nSplitting: \"%s\"\n", self.nodeString(activeChild))
 
 					self.split(activeChild, active.length)
@@ -264,27 +281,84 @@ func (self *SuffixTree) index(index int) { //, index int) {
 	}
 }
 
-/// Contains checks to see if the tree contains a given substring
-func (self *SuffixTree) Contains(s string) bool {
+/// find() Searches through the tree to find a given pattern. If the pattern
+/// exists, find returns the node and offset that indicates the *end* of the
+/// pattern. Returns (nil, -1) if the pattern can't be found.
+func (self *SuffixTree) find(s string) (*node, int) {
 	node := self.root
 	nodeStr := ""
+	index := 0
 	for _, ch := range s {
 		if len(nodeStr) == 0 {
 			if n, ok := node.children[ch]; !ok {
-				return false
+				return nil, 0
 			} else {
 				node = n
+				index = 0
 				nodeStr = self.nodeString(node)
 			}
 		}
 		otherChar, size := utf8.DecodeRuneInString(nodeStr)
 		if ch != otherChar {
-			return false
+			return nil, 0
 		}
-
+		index += size
 		nodeStr = nodeStr[size:]
 	}
-	return true
+	return node, index
+}
+
+/// Contains checks to see if the tree contains a given substring
+func (self *SuffixTree) Contains(s string) bool {
+	n, _ := self.find(s)
+	return n != nil
+}
+
+type StringLoc struct {
+	Id     int
+	Offset int
+}
+
+func (self *SuffixTree) Str(i int) string {
+	return self.corpus[i]
+}
+
+func (self *SuffixTree) FindAll(s string) []StringLoc {
+	type point struct {
+		n      *node
+		length int
+	}
+
+	result := make([]StringLoc, 0)
+	n, offset := self.find(s)
+	if n == nil {
+		return result
+	}
+
+	q := []point{point{n: n, length: n.str.length - offset}}
+	var pt point
+	for len(q) > 0 {
+		pt, q = q[len(q)-1], q[:len(q)-1]
+		if pt.n.isLeaf() {
+			str := self.corpus[pt.n.str.index]
+			offset := len(str) - pt.length - len(s)
+			loc := StringLoc{
+				Id:     pt.n.str.index,
+				Offset: offset,
+			}
+			result = append(result, loc)
+		} else {
+			for _, child := range pt.n.children {
+				nextPoint := point{
+					n:      child,
+					length: pt.length + len(self.nodeString(child)),
+				}
+				q = append(q, nextPoint)
+			}
+		}
+	}
+
+	return result
 }
 
 /// dumpTree writes the tree out to a dot-formatted file for diagnostic
