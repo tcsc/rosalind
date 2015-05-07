@@ -314,15 +314,36 @@ func (self *SuffixTree) Contains(s string) bool {
 	return n != nil
 }
 
+/// StringLoc is a string index / offset pair that can be used
+/// to identify string positions in the tree.
 type StringLoc struct {
 	Id     int
 	Offset int
 }
 
-func (self *SuffixTree) Str(i int) string {
-	return self.corpus[i]
+/// Strings() returns a channel that can be used to iterate over the strings
+/// stored in the tree.
+func (self *SuffixTree) Strings() <-chan string {
+	ch := make(chan string)
+	go func() {
+		defer close(ch)
+		for i := range self.corpus {
+			ch <- self.Str(i)
+		}
+	}()
+	return ch
 }
 
+/// Str() fetches a given string from the tree data store.
+func (self *SuffixTree) Str(i int) string {
+	s := self.corpus[i]
+	return s[:len(s)-9]
+}
+
+/// Finds all instances of the supplied string in the strings in the tree,
+/// returning a collection od string indices and offsets into them
+/// representing the first character of each hit. Returns an empty slice if
+/// no hits are found. The order of the returned hits is undefined.
 func (self *SuffixTree) FindAll(s string) []StringLoc {
 	type point struct {
 		n      *node
@@ -334,6 +355,10 @@ func (self *SuffixTree) FindAll(s string) []StringLoc {
 	if n == nil {
 		return result
 	}
+
+	// ok, so we found the pattern we want. now we need to walk all
+	// descendants of the node containing the search pattern suffix
+	// so we can calculate where the pattern appears in the strings.
 
 	q := []point{point{n: n, length: n.str.length - offset}}
 	var pt point

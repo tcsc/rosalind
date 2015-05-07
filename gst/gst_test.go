@@ -128,3 +128,37 @@ func Test_FindAllActuallyFindsAll(t *testing.T) {
 		}
 	}
 }
+
+func Test_GetStringReturnsOriginalString(t *testing.T) {
+	strings := []string{
+		"The answer ... is fourty-two!",
+		"Fourty-two?",
+		"Yes! Fourty-two!",
+		"Fourty two!? We're going to get lynched, aren't we?",
+	}
+
+	tree := New(strings...)
+
+	for i, s := range strings {
+		if tree.Str(i) != s {
+			t.Errorf("Expected \"%s\", got \"%s\"", tree.Str(i))
+		}
+	}
+}
+
+func Test_StringIterationReturnsAllStringsInOrder(t *testing.T) {
+	strings := []string{
+		"The answer ... is fourty-two!",
+		"Fourty-two?",
+		"Yes! Fourty-two!",
+		"Fourty two!? We're going to get lynched, aren't we?",
+	}
+	tree := New(strings...)
+
+	for s := range tree.Strings() {
+		if s != strings[0] {
+			t.Errorf("Expected \"%s\", got \"%s\".", strings[0], s)
+		}
+		strings = strings[1:]
+	}
+}
