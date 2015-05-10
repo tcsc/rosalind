@@ -19,6 +19,11 @@ type substring struct {
 	length int
 }
 
+func (self substring) GoString() string {
+	return fmt.Sprintf("idx: %d, offs: %d, len: %d",
+		self.index, self.offset, self.length)
+}
+
 /// node represents a chunk of text inside the suffix tree. It doesn't store
 /// the text itself, it only stores pointers to the text in an external string.
 type node struct {
@@ -122,19 +127,6 @@ func (self *activePointState) edgeTarget() *node {
 	return nil
 }
 
-/// slide moves the active point along a link to the next child node, if it is
-/// appropriate to do so. Returns true if the active point has benn modified,
-/// false if it has been left unchanged.
-func (self *activePointState) slide(child *node, index int, text string) bool {
-	if child.str.length != inf && self.length >= child.str.length {
-		self.length -= child.str.length
-		self.edge = decodeRune(text, index-self.length)
-		self.node = child
-		return true
-	}
-	return false
-}
-
 /// Generates a suffix link between a the nodes iff prevNode is not nil.
 func link(prev, next *node) *node {
 	if prev != nil {
@@ -147,6 +139,10 @@ func link(prev, next *node) *node {
 func decodeRune(text string, offset int) rune {
 	r, _ := utf8.DecodeRuneInString(text[offset:])
 	return r
+}
+
+func (self *SuffixTree) MustBeValid() {
+	self.mustBeValid()
 }
 
 /// Asserts the invariants of a completed tree
@@ -187,6 +183,23 @@ func (self *SuffixTree) nodeString(n *node) string {
 	} else {
 		return s[n.str.offset : n.str.offset+n.str.length]
 	}
+}
+
+func (self *SuffixTree) nodeLen(n *node) int {
+	return len(self.nodeString(n))
+}
+
+/// slide moves the active point along a link to the next child node, if it is
+/// appropriate to do so. Returns true if the active point has benn modified,
+/// false if it has been left unchanged.
+func (self *SuffixTree) slide(active *activePointState, child *node, index int, text string) bool {
+	if active.length >= self.nodeLen(child) {
+		active.length -= child.str.length
+		active.edge = decodeRune(text, index-active.length)
+		active.node = child
+		return true
+	}
+	return false
 }
 
 /// Insert inserts a new string into the suffix tree.
@@ -231,7 +244,7 @@ func (self *SuffixTree) index(index int) { //, index int) {
 			} else {
 				// if we have reached the end of the active branc, it's time to
 				// move down the tree to the branch's target node
-				if active.slide(activeChild, i, str) {
+				if self.slide(&active, activeChild, i, str) {
 					// ... and try the current suffix again
 					continue
 				}
@@ -248,15 +261,17 @@ func (self *SuffixTree) index(index int) { //, index int) {
 					// point so we can insert a new node that encodes our active
 					// suffix
 
-					// fmt.Printf("\nSplitting: \"%s\"\n", self.nodeString(activeChild))
+					fmt.Printf("\nSplitting (%#v): \"%s\"\n",
+						activeChild.str,
+						self.nodeString(activeChild))
 
-					self.split(activeChild, active.length)
+					gch := self.split(activeChild, active.length)
 					newChild := newNode(index, i)
 					activeChild.children[c] = newChild
 
-					// fmt.Printf("prefix:    \"%s\"\n", self.nodeString(activeChild))
-					// fmt.Printf("suffix:    \"%s\"\n", self.nodeString(gch))
-					// fmt.Printf("new child: \"%s\"\n", self.nodeString(newChild))
+					fmt.Printf("prefix    %#v: \"%s\"\n", activeChild.str, self.nodeString(activeChild))
+					fmt.Printf("suffix    %#v: \"%s\"\n", gch.str, self.nodeString(gch))
+					fmt.Printf("new child %#v: \"%s\"\n", newChild.str, self.nodeString(newChild))
 
 					prevNode = link(prevNode, activeChild)
 				}
@@ -288,9 +303,11 @@ func (self *SuffixTree) find(s string) (*node, int) {
 	node := self.root
 	nodeStr := ""
 	index := 0
+	offs := 0
 	for _, ch := range s {
 		if len(nodeStr) == 0 {
 			if n, ok := node.children[ch]; !ok {
+				fmt.Printf("Missing child node at offset %d\n", offs)
 				return nil, 0
 			} else {
 				node = n
@@ -300,9 +317,11 @@ func (self *SuffixTree) find(s string) (*node, int) {
 		}
 		otherChar, size := utf8.DecodeRuneInString(nodeStr)
 		if ch != otherChar {
+			fmt.Printf("Bad char at offset %d (expected %c, got %c)\n", offs, ch, otherChar)
 			return nil, 0
 		}
 		index += size
+		offs += size
 		nodeStr = nodeStr[size:]
 	}
 	return node, index
@@ -360,6 +379,9 @@ func (self *SuffixTree) FindAll(s string) []StringLoc {
 	// descendants of the node containing the search pattern suffix
 	// so we can calculate where the pattern appears in the strings.
 
+	// obvious potential speedup: fork off many goroutines to walk
+	// each descendant in parallel and return them to the caller.
+
 	q := []point{point{n: n, length: n.str.length - offset}}
 	var pt point
 	for len(q) > 0 {
@@ -386,9 +408,137 @@ func (self *SuffixTree) FindAll(s string) []StringLoc {
 	return result
 }
 
+type intset map[int]bool
+
+func (self intset) union(other intset) {
+	for k, _ := range other {
+		self[k] = true
+	}
+}
+
+type lcsNode struct {
+	parent   *lcsNode
+	treeNode *node
+	children []*lcsNode
+	length   int
+	strings  intset
+}
+
+func (self *SuffixTree) buildLcsTree(parent *lcsNode, n *node, length int) intset {
+	mylength := length + len(self.nodeString(n))
+
+	lcs := &lcsNode{
+		parent:   parent,
+		treeNode: n,
+		length:   mylength,
+		strings:  intset{},
+		children: make([]*lcsNode, 0, len(n.children)),
+	}
+	parent.children = append(parent.children, lcs)
+
+	if n.isLeaf() {
+		lcs.strings[n.str.index] = true
+	}
+
+	for _, child := range n.children {
+		lcs.strings.union(
+			self.buildLcsTree(lcs, child, length+len(self.nodeString(n))))
+	}
+
+	return lcs.strings
+}
+
+func dumpLcsTree(filename string, n *lcsNode, numStrings int) {
+	file, err := os.Create(filename)
+	if err != nil {
+		panic("Failed to open graph output file")
+	}
+	defer file.Close()
+
+	file.WriteString("digraph G {\n")
+	defer file.WriteString("}")
+
+	q := []*lcsNode{n}
+	for len(q) > 0 {
+		n := q[0]
+		q = q[1:]
+
+		label := fmt.Sprintf("Length: %d, Strings: %d",
+			n.length, len(n.strings))
+
+		style := ""
+		if len(n.strings) == numStrings {
+			style = " color=red"
+		}
+
+		file.WriteString(fmt.Sprintf("\"%p\" [label=\"%s\"%s]\n", n, label, style))
+		file.WriteString(fmt.Sprintf("\"%p\" -> \"%p\"\n", n, n.parent))
+		for _, child := range n.children {
+			file.WriteString(fmt.Sprintf("\"%p\" -> \"%p\"\n", n, child))
+		}
+
+		q = append(q, n.children...)
+	}
+}
+
+/// Remember: length as used here is the number of BYTES in the string, not the
+/// number of CODE POINTS in the string.
+func (self *SuffixTree) LongestCommonSubstring() string {
+
+	lcsTree := lcsNode{
+		parent:   nil,
+		treeNode: self.root,
+		length:   0,
+		strings:  intset{},
+		children: make([]*lcsNode, 0, len(self.root.children)),
+	}
+
+	for _, child := range self.root.children {
+		lcsTree.strings.union(self.buildLcsTree(&lcsTree, child, 0))
+	}
+
+	//dumpLcsTree("lcs-tree.dot", &lcsTree, len(self.corpus))
+
+	// OK, so now we have a tree where each node knows how many strings run
+	// through it. We use this to find the longest string that has all
+	// nodes running through it
+	q := []*lcsNode{&lcsTree}
+	var n *lcsNode = nil
+	var candidate *lcsNode = &lcsTree
+	for len(q) > 0 {
+		n, q = q[len(q)-1], q[:len(q)-1]
+
+		// immediately bail if this node is a dead end
+		if len(n.strings) < len(self.corpus) {
+			continue
+		}
+
+		if n.length > candidate.length {
+			candidate = n
+		}
+
+		q = append(q, n.children...)
+	}
+
+	if candidate == &lcsTree {
+		// we have no common substring
+		return ""
+	}
+
+	// we *do* have a common substring. Walk back up the LCS tree and grab the
+	// substrings we need to assemble the result
+	result := ""
+	for candidate.treeNode != self.root {
+		result = self.nodeString(candidate.treeNode) + result
+		candidate = candidate.parent
+	}
+
+	return result
+}
+
 /// dumpTree writes the tree out to a dot-formatted file for diagnostic
 /// purposes.
-func (self *SuffixTree) dumpTree(filename string) {
+func (self *SuffixTree) DumpTree(filename string) {
 	file, err := os.Create(filename)
 	if err != nil {
 		panic("Failed to open graph output file")
@@ -418,9 +568,9 @@ func (self *SuffixTree) dumpTree(filename string) {
 			file.WriteString(fmt.Sprintf("\"%p\" -> \"%p\" [label=\"'%c'\"]\n", n, v, k))
 		}
 
-		if n.suffix != nil {
-			file.WriteString(fmt.Sprintf("\"%p\" -> \"%p\" [style=\"dotted\"]\n", n, n.suffix))
-		}
+		// if n.suffix != nil {
+		// 	file.WriteString(fmt.Sprintf("\"%p\" -> \"%p\" [style=\"dotted\"]\n", n, n.suffix))
+		// }
 
 		queue = append(queue, n.childNodes()...)
 	}
