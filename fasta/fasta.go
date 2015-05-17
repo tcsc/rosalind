@@ -8,25 +8,25 @@ import (
 	"strings"
 )
 
-type Codon struct {
+type String struct {
 	Name     string
 	Sequence string
 	Error    error
 }
 
-func ReadFile(filename string) <-chan Codon {
+func ReadFile(filename string) <-chan String {
 	file, err := os.Open(filename)
 	if err != nil {
-		ch := make(chan Codon, 1)
-		ch <- Codon{"", "", err}
+		ch := make(chan String, 1)
+		ch <- String{"", "", err}
 		close(ch)
 		return ch
 	}
 	return Read(file)
 }
 
-func Read(reader io.Reader) <-chan Codon {
-	ch := make(chan Codon, 2)
+func Read(reader io.Reader) <-chan String {
+	ch := make(chan String, 2)
 	go func() {
 		// When we exit, close the input stream if its closeable
 		defer func() {
@@ -43,7 +43,7 @@ func Read(reader io.Reader) <-chan Codon {
 		s := bufio.NewScanner(reader)
 		for s.Scan() {
 			if s.Err() != nil {
-				ch <- Codon{"", "", s.Err()}
+				ch <- String{"", "", s.Err()}
 				return
 			}
 
@@ -54,7 +54,7 @@ func Read(reader io.Reader) <-chan Codon {
 
 			if line[0] == '>' {
 				if seq.Len() > 0 {
-					ch <- Codon{name, seq.String(), nil}
+					ch <- String{name, seq.String(), nil}
 				}
 				name = line[1:]
 				seq.Reset()
@@ -64,7 +64,7 @@ func Read(reader io.Reader) <-chan Codon {
 		}
 
 		if seq.Len() > 0 {
-			ch <- Codon{name, seq.String(), nil}
+			ch <- String{name, seq.String(), nil}
 		}
 	}()
 

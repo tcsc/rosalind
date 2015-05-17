@@ -75,10 +75,10 @@ func Test_CommentLinesAreIgnored(t *testing.T) {
 	buf := bytes.NewBufferString(">SomeName\nGAT\nTACA\n;>AnotherName\nGATAAAATTTTAACACACCA")
 	count := 0
 	for codon := range Read(buf) {
-		var expected Codon
+		var expected String
 		switch count {
 		case 0:
-			expected = Codon{"SomeName", "GATTACAGATAAAATTTTAACACACCA", nil}
+			expected = String{"SomeName", "GATTACAGATAAAATTTTAACACACCA", nil}
 			break
 
 		default:
@@ -96,14 +96,14 @@ func Test_MultipleRecordsAreReadInOrder(t *testing.T) {
 	buf := bytes.NewBufferString(">SomeName\nGAT\nTACA\n>AnotherName\nGATAAAATTTTAACACACCA")
 	count := 0
 	for codon := range Read(buf) {
-		var expected Codon
+		var expected String
 		switch count {
 		case 0:
-			expected = Codon{"SomeName", "GATTACA", nil}
+			expected = String{"SomeName", "GATTACA", nil}
 			break
 
 		case 1:
-			expected = Codon{"AnotherName", "GATAAAATTTTAACACACCA", nil}
+			expected = String{"AnotherName", "GATAAAATTTTAACACACCA", nil}
 			break
 
 		default:
